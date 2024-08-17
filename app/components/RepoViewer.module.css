@@ -1,0 +1,27 @@
+.container {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.fileContainer {
+  margin-bottom: 20px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+.fileName {
+  background-color: #f0f0f0;
+  padding: 10px;
+  margin: 0;
+  font-weight: bold;
+}
+
+.fileContent {
+  padding: 10px;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  font-family: monospace;
+  font-size: 14px;
+  max-height: 500px;
+  overflow-y: auto;
+}
