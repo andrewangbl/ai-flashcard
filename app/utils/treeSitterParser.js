@@ -1,78 +1,43 @@
 "use client";
 
-import { useEffect, useState } from 'react';
 import Parser from 'web-tree-sitter';
 
 let parserPromise = null;
 
 export function useTreeSitter() {
-  const [parsers, setParsers] = useState(null);
-
-  useEffect(() => {
-    if (!parserPromise) {
-      parserPromise = initParser();
-    }
-    parserPromise.then(setParsers).catch(error => {
-      console.error("Error initializing Tree-sitter:", error);
-    });
-  }, []);
-
-  return parsers;
+  if (!parserPromise) {
+    parserPromise = initializeParser();
+  }
+  return parserPromise;
 }
 
-async function initParser() {
+async function initializeParser() {
   await Parser.init({
     locateFile(scriptName) {
       return `/${scriptName}`;
     },
   });
-
-  const parsers = {
-    javascript: new Parser(),
-    python: new Parser(),
-    java: new Parser(),
-    cpp: new Parser(),
-    bash: new Parser(),
-    toml: new Parser(),
-    yaml: new Parser(),
-    typescript: new Parser(),
-    html: new Parser(),
-  };
-
-  const languages = {
-    javascript: await Parser.Language.load('/tree-sitter-javascript.wasm'),
-    python: await Parser.Language.load('/tree-sitter-python.wasm'),
-    java: await Parser.Language.load('/tree-sitter-java.wasm'),
-    cpp: await Parser.Language.load('/tree-sitter-cpp.wasm'),
-    bash: await Parser.Language.load('/tree-sitter-bash.wasm'),
-    toml: await Parser.Language.load('/tree-sitter-toml.wasm'),
-    yaml: await Parser.Language.load('/tree-sitter-yaml.wasm'),
-    typescript: await Parser.Language.load('/tree-sitter-typescript.wasm'),
-    html: await Parser.Language.load('/tree-sitter-html.wasm'),
-  };
-
-  for (const [lang, parser] of Object.entries(parsers)) {
-    parser.setLanguage(languages[lang]);
-  }
-
-  return parsers;
+  const parser = new Parser();
+  const JavaScript = await Parser.Language.load("tree-sitter-javascript.wasm");
+  parser.setLanguage(JavaScript);
+  return parser;
 }
 
-export async function parseRepo(parsers, repoMap) {
+export async function parseRepo(parser, repoMap) {
   const parsedRepo = {};
   for (const [path, content] of Object.entries(repoMap)) {
-    const ext = path.split('.').pop().toLowerCase();
-    const lang = getLanguageFromExtension(ext);
-    if (lang === null) {
-      continue; // Skip this file
-    }
-    const parser = parsers[lang];
-
-    if (parser) {
+    try {
       const tree = parser.parse(content);
-      parsedRepo[path] = extractFileStructure(tree.rootNode, content, lang);
-    } else {
-      console.warn(`No parser available for language: ${lang}`);
+      parsedRepo[path] = {
+        structure: extractFileStructure(tree.rootNode, content),
+        ast: tree.rootNode
+      };
+    } catch (error) {
+      console.error(`Error parsing ${path}:`, error);
+      parsedRepo[path] = {
+        structure: `Error parsing file: ${error.message}`,
+        ast: null
+      };
     }
   }
   return parsedRepo;
@@ -255,18 +220,41 @@ export function renderTree(content, linesOfInterest) {
   return output;
 }
 
-export function toTree(parsedRepo, chatFiles) {
+export function toTree(parsedRepo, chatFiles, maxDepth = 5) {
   let output = '';
 
-  for (const [path, structure] of Object.entries(parsedRepo)) {
+  for (const [path, data] of Object.entries(parsedRepo)) {
     if (chatFiles.includes(path)) continue;
 
     output += `\n${path}:\n`;
-    output += structure;
+    output += data.structure;
+    output += '\nAST:\n';
+    output += visualizeAST(data.ast, '', maxDepth);
   }
 
-  // Truncate long lines
-  output = output.split('\n').map(line => line.slice(0, 100)).join('\n') + '\n';
+  return output.split('\n').map(line => line.slice(0, 100)).join('\n') + '\n';
+}
+
+function visualizeAST(node, indent = '', maxDepth = 10) {
+  if (maxDepth === 0) return `${indent}...\n`;
+
+  // Skip comments and other unnecessary nodes
+  if (shouldSkipNode(node)) return '';
+
+  let output = `${indent}${node.type}`;
+  if (node.type === 'string' || node.type === 'identifier') {
+    output += `: "${node.text}"`;
+  }
+  output += '\n';
+
+  for (let child of node.namedChildren) {
+    output += visualizeAST(child, indent + '  ', maxDepth - 1);
+  }
 
   return output;
+}
+
+function shouldSkipNode(node) {
+  const skipTypes = ['comment', 'line_comment', 'block_comment'];
+  return skipTypes.includes(node.type);
 }

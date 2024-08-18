@@ -29,15 +29,7 @@ function extractDefinitions(content) {
 }
 
 function buildRepoMap(repoContents) {
-  const repoMap = {};
-
-  for (const file of repoContents) {
-    if (file.type === 'file' && (file.name.endsWith('.js') || file.name.endsWith('.ts') || file.name.endsWith('.py'))) {
-      repoMap[file.path] = file.content;
-    }
-  }
-
-  return repoMap;
+  return repoContents;
 }
 
 function extractFileStructure(ast, content) {

@@ -23,6 +23,7 @@
     "tree-sitter-javascript": "^0.20.1",
     "tree-sitter-python": "^0.21.0",
     "tree-sitter-typescript": "^0.21.2",
+    "vis-network": "^9.1.9",
     "web-tree-sitter": "^0.22.6"
   },
   "devDependencies": {

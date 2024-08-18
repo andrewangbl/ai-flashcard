@@ -21,9 +21,13 @@ async function fetchRepoContents(owner, repo, path = '') {
 
     for (const item of response.data) {
       if (item.type === 'file') {
-        const fileContent = await octokit.repos.getContent({ owner, repo, path: item.path });
-        contents[item.path] = Buffer.from(fileContent.data.content, 'base64').toString('utf-8');
-      } else if (item.type === 'dir') {
+        const fileExtension = item.name.split('.').pop().toLowerCase();
+        if (isCodeFile(fileExtension)) {
+          const fileContent = await octokit.repos.getContent({ owner, repo, path: item.path });
+          contents[item.path] = Buffer.from(fileContent.data.content, 'base64').toString('utf-8');
+        }
+      } else if (item.type === 'dir' && path.split('/').length < 5) {
+        // Limit directory depth to 4 levels
         const subDirContents = await fetchRepoContents(owner, repo, item.path);
         contents = { ...contents, ...subDirContents };
       }
@@ -34,6 +38,11 @@ async function fetchRepoContents(owner, repo, path = '') {
     console.error(`Error fetching ${path}:`, error);
     return {};
   }
+}
+
+const codeExtensions = new Set(['js', 'jsx', 'ts', 'tsx', 'py', 'java', 'cpp', 'c', 'h', 'hpp', 'cs', 'go', 'rb', 'php', 'swift', 'kt', 'rs']);
+function isCodeFile(extension) {
+  return codeExtensions.has(extension);
 }
 
 export async function POST(req) {

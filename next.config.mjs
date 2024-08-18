@@ -5,6 +5,7 @@ const nextConfig = {
       fs: false,
     }
     config.experiments = { ...config.experiments, asyncWebAssembly: true };
+    config.output.webassemblyModuleFilename = 'static/wasm/[modulehash].wasm';
 
     return config
   },
