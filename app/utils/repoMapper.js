@@ -103,5 +103,3 @@ function formatFileMap(fileMap, lines) {
 
   return output.trim();
 }
-
-export { buildRepoMap };
