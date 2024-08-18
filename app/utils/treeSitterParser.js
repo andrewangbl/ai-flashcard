@@ -12,7 +12,9 @@ export function useTreeSitter() {
     if (!parserPromise) {
       parserPromise = initParser();
     }
-    parserPromise.then(setParsers);
+    parserPromise.then(setParsers).catch(error => {
+      console.error("Error initializing Tree-sitter:", error);
+    });
   }, []);
 
   return parsers;
@@ -29,14 +31,24 @@ async function initParser() {
     javascript: new Parser(),
     python: new Parser(),
     java: new Parser(),
-    cpp: new Parser()
+    cpp: new Parser(),
+    bash: new Parser(),
+    toml: new Parser(),
+    yaml: new Parser(),
+    typescript: new Parser(),
+    html: new Parser(),
   };
 
   const languages = {
     javascript: await Parser.Language.load('/tree-sitter-javascript.wasm'),
     python: await Parser.Language.load('/tree-sitter-python.wasm'),
     java: await Parser.Language.load('/tree-sitter-java.wasm'),
-    cpp: await Parser.Language.load('/tree-sitter-cpp.wasm')
+    cpp: await Parser.Language.load('/tree-sitter-cpp.wasm'),
+    bash: await Parser.Language.load('/tree-sitter-bash.wasm'),
+    toml: await Parser.Language.load('/tree-sitter-toml.wasm'),
+    yaml: await Parser.Language.load('/tree-sitter-yaml.wasm'),
+    typescript: await Parser.Language.load('/tree-sitter-typescript.wasm'),
+    html: await Parser.Language.load('/tree-sitter-html.wasm'),
   };
 
   for (const [lang, parser] of Object.entries(parsers)) {
@@ -50,94 +62,165 @@ export async function parseRepo(parsers, repoMap) {
   const parsedRepo = {};
   for (const [path, content] of Object.entries(repoMap)) {
     const ext = path.split('.').pop().toLowerCase();
-    const lang = ext === 'py' ? 'python' :
-                 ext === 'java' ? 'java' :
-                 ext === 'cpp' || ext === 'h' ? 'cpp' : 'javascript';
+    const lang = getLanguageFromExtension(ext);
+    if (lang === null) {
+      continue; // Skip this file
+    }
     const parser = parsers[lang];
-    const tree = parser.parse(content);
-    parsedRepo[path] = extractFileStructure(tree.rootNode, content, lang);
+
+    if (parser) {
+      const tree = parser.parse(content);
+      parsedRepo[path] = extractFileStructure(tree.rootNode, content, lang);
+    } else {
+      console.warn(`No parser available for language: ${lang}`);
+    }
   }
   return parsedRepo;
+}
+
+function getLanguageFromExtension(ext) {
+  switch (ext) {
+    case 'py': return 'python';
+    case 'java': return 'java';
+    case 'cpp':
+    case 'h': return 'cpp';
+    case 'js':
+    case 'jsx': return 'javascript';
+    case 'ts':
+    case 'tsx': return 'typescript';
+    case 'sh':
+    case 'bash': return 'bash';
+    case 'html': return 'html';
+    case 'toml': return 'toml';
+    case 'yml':
+    case 'yaml': return 'yaml';
+    // Ignore configuration and system files
+    case 'md':
+    case 'txt':
+    case 'png':
+    case 'jpg':
+    case 'jpeg':
+    case 'gif':
+    case 'svg':
+    case 'json':
+    case 'css':
+    case 'scss':
+    case 'less':
+    case 'gitignore':
+    case 'dockerignore':
+    case 'flake8':
+    case 'env':
+    case 'ini':
+    case 'cfg':
+    case 'config':
+    case 'lock':
+    case 'log':
+    case 'sql':
+    case 'db':
+    case 'sqlite':
+    case 'xml':
+    case 'csv':
+    case 'ico':
+    case 'woff':
+    case 'woff2':
+    case 'ttf':
+    case 'otf':
+    case 'eot':
+      return null;
+    default: return 'javascript'; // Fallback
+  }
 }
 
 function extractFileStructure(node, content, lang) {
   const structure = [];
   const lines = content.split('\n');
 
-  function traverse(node, depth = 0) {
-    let type, name, decorators = [];
+  function traverse(node) {
+    let type, name;
+    const item = { type: '', name: '', methods: [] };
+
     switch (lang) {
-      case 'python':
-        if (node.type === 'decorated_definition') {
-          const definition = node.childForFieldName('definition');
-          if (definition) {
-            const decoratorNodes = node.childForFieldName('decorators').children;
-            decorators = decoratorNodes.map(d => d.text.trim());
-            return traverse(definition, depth);
+      case 'javascript':
+      case 'typescript':
+        if (node.type === 'class_declaration' || node.type === 'function_declaration' || node.type === 'arrow_function' || node.type === 'function') {
+          type = node.type === 'class_declaration' ? 'class' : 'function';
+          name = node.childForFieldName('name')?.text || 'anonymous';
+          item.type = type;
+          item.name = name;
+
+          for (let child of node.children) {
+            if (child.type === 'method_definition' || child.type === 'function_declaration') {
+              const methodName = child.childForFieldName('name')?.text || 'anonymous';
+              item.methods.push(methodName);
+            }
+          }
+          structure.push(item);
+        } else if (node.type === 'variable_declaration') {
+          const declarator = node.childForFieldName('declarator');
+          if (declarator) {
+            const value = declarator.childForFieldName('value');
+            if (value && (value.type === 'arrow_function' || value.type === 'function')) {
+              type = 'function';
+              name = declarator.childForFieldName('name')?.text || 'anonymous';
+              item.type = type;
+              item.name = name;
+              structure.push(item);
+            }
           }
         }
+        break;
+
+      case 'python':
         if (node.type === 'class_definition' || node.type === 'function_definition') {
           type = node.type === 'class_definition' ? 'class' : 'function';
           name = node.childForFieldName('name')?.text || 'anonymous';
-          const startLine = node.startPosition.row + 1;
-          const endLine = node.endPosition.row + 1;
-          const item = { type, name, startLine, endLine, decorators, children: [] };
+          item.type = type;
+          item.name = name;
 
           for (let child of node.children) {
-            const childItem = traverse(child, depth + 1);
-            if (childItem) item.children.push(childItem);
-          }
-
-          return item;
-        }
-        break;
-      case 'java':
-      case 'cpp':
-        if (node.type === 'class_specifier' || node.type === 'function_definition') {
-          type = node.type === 'class_specifier' ? 'class' : 'function';
-          name = node.childForFieldName('name')?.text ||
-                 node.descendantsOfType('identifier')[0]?.text || 'anonymous';
-        }
-        break;
-      default: // javascript
-        if (node.type === 'class_declaration' || node.type === 'function_declaration' ||
-            node.type === 'method_definition' || node.type === 'arrow_function' ||
-            node.type === 'variable_declaration') {
-          if (node.type === 'variable_declaration') {
-            const declarationsNode = node.childForFieldName('declarations');
-            const declarationNode = declarationsNode?.firstChild;
-            if (declarationNode) {
-              name = declarationNode.childForFieldName('name')?.text || 'anonymous';
-              const valueNode = declarationNode.childForFieldName('value');
-              type = (valueNode?.type === 'arrow_function' || valueNode?.type === 'function') ? 'function' : 'variable';
-            } else {
-              // Handle case where there are no declarations
-              type = 'variable';
-              name = 'anonymous';
+            if (child.type === 'function_definition') {
+              const methodName = child.childForFieldName('name')?.text || 'anonymous';
+              item.methods.push(methodName);
             }
-          } else {
-            type = node.type === 'class_declaration' ? 'class' : 'function';
-            name = node.childForFieldName('name')?.text || 'anonymous';
           }
+          structure.push(item);
         }
-    }
+        break;
 
-    if (type && name) {
-      const startLine = node.startPosition.row + 1;
-      const endLine = node.endPosition.row + 1;
-      const item = { type, name, startLine, endLine, decorators, children: [] };
+      case 'bash':
+        if (node.type === 'function_definition') {
+          type = 'function';
+          name = node.childForFieldName('name')?.text || 'anonymous';
+          item.type = type;
+          item.name = name;
+          structure.push(item);
+        }
+        break;
 
-      for (let child of node.children) {
-        const childItem = traverse(child, depth + 1);
-        if (childItem) item.children.push(childItem);
-      }
+      case 'html':
+        if (node.type === 'element') {
+          type = 'element';
+          name = node.childForFieldName('tag_name')?.text || 'anonymous';
+          item.type = type;
+          item.name = name;
+          structure.push(item);
+        }
+        break;
 
-      return item;
+      case 'toml':
+      case 'yaml':
+        if (node.type === 'table' || node.type === 'pair') {
+          type = node.type;
+          name = node.childForFieldName('key')?.text || 'anonymous';
+          item.type = type;
+          item.name = name;
+          structure.push(item);
+        }
+        break;
     }
 
     for (let child of node.children) {
-      const result = traverse(child, depth);
-      if (result) structure.push(result);
+      traverse(child);
     }
   }
 
@@ -148,27 +231,14 @@ function extractFileStructure(node, content, lang) {
 function formatFileStructure(structure, lines) {
   let output = '⋮...\n';
 
-  function addItem(item, indent = '') {
-    if (item.decorators && item.decorators.length > 0) {
-      item.decorators.forEach(decorator => {
-        output += `${indent}│${decorator}\n`;
-      });
-    }
-    output += `${indent}│${item.type} ${item.name}:\n`;
-    for (let i = item.startLine; i <= item.endLine; i++) {
-      const line = lines[i - 1].trim();
-      if (line) {
-        output += `${indent}│    ${line}\n`;
-      }
-    }
-    if (item.children.length > 0) {
-      item.children.forEach(child => addItem(child, indent + '│    '));
-    } else {
-      output += `${indent}│    ⋮...\n`;
-    }
-  }
+  structure.forEach(item => {
+    output += `${item.type} ${item.name}:\n`;
+    item.methods.forEach(method => {
+      output += `│    ${method}\n`;
+    });
+    output += '⋮...\n';
+  });
 
-  structure.forEach(item => addItem(item));
   return output;
 }
 
