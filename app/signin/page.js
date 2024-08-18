@@ -16,9 +16,19 @@ export default function SignIn() {
     if (email) {
       router.push('/');
     }
-  }, []);
+  }, [router]);
+
+  const validateEmail = (email) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
 
   const handleSignIn = async () => {
+    if (!validateEmail(email)) {
+      setError('Please enter a valid email address.');
+      return;
+    }
+
     const response = await signInUser(email, password);
     if (response.success) {
       localStorage.setItem('email', email); 
@@ -36,6 +46,7 @@ export default function SignIn() {
         </Typography>
         <TextField
           label="Email"
+          type="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           fullWidth

@@ -10,8 +10,19 @@ export default function Register() {
   const [error, setError] = useState('');
   const router = useRouter();
 
+  const validateEmail = (email) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
+
   const handleRegister = async (e) => {
     e.preventDefault();
+    
+    if (!validateEmail(email)) {
+      setError('Please enter a valid email address.');
+      return;
+    }
+
     const res = await fetch('/api/register', {
       method: 'POST',
       headers: {
@@ -37,6 +48,7 @@ export default function Register() {
         </Typography>
         <TextField
           label="Email"
+          type="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           fullWidth
