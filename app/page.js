@@ -35,7 +35,7 @@ export default function Home() {
       <h1>GitHub Repository Mapper</h1>
       <RepoForm onSubmit={handleSubmit} />
       {error && <p style={{ color: 'red' }}>{error}</p>}
-      {repoContents && <RepoViewer repoMap={repoContents} chatFiles={chatFiles} />}
+      {repoContents && <RepoViewer repoContents={repoContents} chatFiles={chatFiles} />}
     </main>
   );
 }

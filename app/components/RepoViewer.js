@@ -1,27 +1,36 @@
 "use client";
 
 import React, { useEffect, useState } from 'react';
-import { useTreeSitter, parseRepo, toTree } from '../utils/treeSitterParser';
+import { summarizeFile, createRepoMap } from '../utils/langchainSummarizer';
 import styles from './RepoViewer.module.css';
 
-export default function RepoViewer({ repoMap, chatFiles }) {
-  const parsers = useTreeSitter();
-  const [parsedRepo, setParsedRepo] = useState({});
-  const [treeView, setTreeView] = useState('');
+export default function RepoViewer({ repoContents, chatFiles }) {
+  const [repoMap, setRepoMap] = useState('');
 
   useEffect(() => {
-    if (parsers && repoMap) {
-      parseRepo(parsers, repoMap).then(parsed => {
-        setParsedRepo(parsed);
-        setTreeView(toTree(parsed, chatFiles));
-      });
+    async function generateRepoMap() {
+      if (repoContents) {
+        const fileSummaries = await Promise.all(
+          Object.entries(repoContents)
+            .filter(([path]) => !chatFiles.includes(path))
+            .map(async ([path, { content }]) => {
+              const summary = await summarizeFile(content);
+              return `${path}:\n${summary}`;
+            })
+        );
+
+        const fullRepoMap = await createRepoMap(fileSummaries.join('\n\n'));
+        setRepoMap(fullRepoMap);
+      }
     }
-  }, [parsers, repoMap, chatFiles]);
+
+    generateRepoMap();
+  }, [repoContents, chatFiles]);
 
   return (
     <div className={styles.container}>
       <h2>Repository Structure:</h2>
-      <pre className={styles.fileContent}>{treeView}</pre>
+      <pre className={styles.fileContent}>{repoMap}</pre>
     </div>
   );
 }
