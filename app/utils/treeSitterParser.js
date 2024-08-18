@@ -1,6 +1,8 @@
 "use client";
 
 import Parser from 'web-tree-sitter';
+import CodeAnalyzer from './CodeAnalyzer';
+import GraphBuilder from './GraphBuilder';
 
 let parserPromise = null;
 
@@ -19,19 +21,38 @@ async function initializeParser() {
   });
   const parser = new Parser();
   const JavaScript = await Parser.Language.load("tree-sitter-javascript.wasm");
-  parser.setLanguage(JavaScript);
-  return parser;
+  const Python = await Parser.Language.load("tree-sitter-python.wasm");
+
+  return {
+    parser,
+    languages: {
+      javascript: JavaScript,
+      python: Python
+    }
+  };
 }
 
-export async function parseRepo(parser, repoMap) {
+export async function parseRepo(parserData, repoMap) {
+  const { parser, languages } = parserData;
   const parsedRepo = {};
+  const codeAnalyzer = new CodeAnalyzer();
+  const graphBuilder = new GraphBuilder();
+
   for (const [path, content] of Object.entries(repoMap)) {
     try {
+      const ext = path.split('.').pop().toLowerCase();
+      const language = ext === 'py' ? languages.python : languages.javascript;
+      parser.setLanguage(language);
+
       const tree = parser.parse(content);
+      const analysisResult = codeAnalyzer.analyzeCode(tree.rootNode, path);
       parsedRepo[path] = {
         structure: extractFileStructure(tree.rootNode, content),
-        ast: tree.rootNode
+        ast: tree.rootNode,
+        analysis: analysisResult
       };
+
+      graphBuilder.constructGraph([analysisResult]);
     } catch (error) {
       console.error(`Error parsing ${path}:`, error);
       parsedRepo[path] = {
@@ -40,7 +61,8 @@ export async function parseRepo(parser, repoMap) {
       };
     }
   }
-  return parsedRepo;
+
+  return { parsedRepo, graphData: graphBuilder.graph };
 }
 
 function getLanguageFromExtension(ext) {
@@ -220,7 +242,7 @@ export function renderTree(content, linesOfInterest) {
   return output;
 }
 
-export function toTree(parsedRepo, chatFiles, maxDepth = 5) {
+export function toTree(parsedRepo, chatFiles, maxDepth = 15) {
   let output = '';
 
   for (const [path, data] of Object.entries(parsedRepo)) {
@@ -235,7 +257,7 @@ export function toTree(parsedRepo, chatFiles, maxDepth = 5) {
   return output.split('\n').map(line => line.slice(0, 100)).join('\n') + '\n';
 }
 
-function visualizeAST(node, indent = '', maxDepth = 10) {
+function visualizeAST(node, indent = '', maxDepth = 15) {
   if (maxDepth === 0) return `${indent}...\n`;
 
   // Skip comments and other unnecessary nodes
@@ -255,6 +277,7 @@ function visualizeAST(node, indent = '', maxDepth = 10) {
 }
 
 function shouldSkipNode(node) {
+  if (!node) return true;
   const skipTypes = ['comment', 'line_comment', 'block_comment'];
   return skipTypes.includes(node.type);
 }
