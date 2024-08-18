@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server'
 import { Octokit } from '@octokit/rest';
-import { load } from '@langchain/chain';
-import { loadOpenAI } from '@langchain/openai';
-import { loadLangchain } from '@langchain/langchain';
+import { ChatOpenAI } from "@langchain/openai";
+import { PromptTemplate } from "@langchain/core/prompts";
+import { RunnableSequence } from "@langchain/core/runnables";
 
 const octokit = new Octokit({
   auth: process.env.GITHUB_ACCESS_TOKEN
@@ -42,46 +42,85 @@ async function fetchRepoContents(owner, repo, path = '') {
   }
 }
 
+const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
 async function summarizeFile(file) {
-  const openai = loadOpenAI({
+  await delay(200); // Add a 200ms delay before each API call
+  const model = new ChatOpenAI({
     temperature: 0,
-    maxTokens: 100,
-    model: 'gpt-3.5-turbo'
+    modelName: 'gpt-4-1106-preview'
   });
 
-  const summary = await openai.run({
-    prompt: `Summarize the contents of the file ${file.path}:\n\n${file.content}`
+  const prompt = PromptTemplate.fromTemplate(
+    "Summarize the following code file in 50 words or less, focusing on main functions and important variables:\n\n{content}"
+  );
+
+  const chain = RunnableSequence.from([prompt, model]);
+
+  const result = await chain.invoke({
+    content: file.content
   });
 
   return {
     path: file.path,
-    summary: summary.choices[0].message.content
+    summary: result.content
   };
 }
 
 async function summarizeRepo(repoContents) {
-  const langchain = loadLangchain({
-    chains: [
-      {
-        name: 'map',
-        chainType: 'map',
-        inputs: ['repoContents'],
-        outputs: ['repoMap'],
-        functions: [
-          {
-            name: 'summarizeFile',
-            function: summarizeFile
-          }
-        ]
-      }
-    ]
+  const summaries = await Promise.all(
+    Object.values(repoContents).map(summarizeFile)
+  );
+
+  const model = new ChatOpenAI({
+    temperature: 0,
+    modelName: 'gpt-3.5-turbo'
   });
 
-  const repoMap = await langchain.run({
-    repoContents
+  const prompt = PromptTemplate.fromTemplate(
+    "Create a repository map from the following file summaries:\n\n{summaries}"
+  );
+
+  const chain = RunnableSequence.from([prompt, model]);
+
+  const result = await chain.invoke({
+    summaries: summaries.map(s => `${s.path}:\n${s.summary}`).join('\n\n')
   });
 
-  return repoMap;
+  return result.content;
+}
+
+async function mapReduceRepoSummary(repoContents) {
+  const MAX_FILES = 25; // Set a maximum number of files to process
+  const codeExtensions = ['.py', '.js', '.ts', '.jsx', '.tsx', '.cpp', '.c', '.h', '.hpp'];
+
+  const files = Object.entries(repoContents).filter(([path]) =>
+    codeExtensions.some(ext => path.toLowerCase().endsWith(ext))
+  );
+
+  if (files.length > MAX_FILES) {
+    throw new Error(`Repository has too many code files. Maximum ${MAX_FILES} files allowed, but found ${files.length} code files.`);
+  }
+
+  // Map: Summarize each file
+  const fileSummaries = await Promise.all(
+    files.map(async ([path, content]) => {
+      const summary = await summarizeFile({ path, content });
+      return `${path}:\n${summary.summary}`;
+    })
+  );
+
+  // Reduce: Combine summaries in chunks
+  const chunkSize = 10;
+  let finalSummary = '';
+  for (let i = 0; i < fileSummaries.length; i += chunkSize) {
+    const chunk = fileSummaries.slice(i, i + chunkSize);
+    const chunkSummary = await summarizeRepo(chunk.join('\n\n'));
+    finalSummary += chunkSummary + '\n\n';
+  }
+
+  // Final reduction
+  return summarizeRepo(finalSummary);
 }
 
 export async function POST(req) {
@@ -94,10 +133,13 @@ export async function POST(req) {
   try {
     const { owner, repo } = parseGitHubUrl(repoUrl);
     const repoContents = await fetchRepoContents(owner, repo);
-    const repoMap = await summarizeRepo(repoContents);
+    const repoMap = await mapReduceRepoSummary(repoContents);
     return NextResponse.json(repoMap);
   } catch (error) {
     console.error('Error in POST /api/getrepo:', error);
+    if (error.message.includes('Repository has too many code files')) {
+      return NextResponse.json({ error: error.message }, { status: 413 }); // 413 Payload Too Large
+    }
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

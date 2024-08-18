@@ -1,36 +1,47 @@
 "use client";
 
 import React, { useEffect, useState } from 'react';
-import { summarizeFile, createRepoMap } from '../utils/langchainSummarizer';
 import styles from './RepoViewer.module.css';
 
 export default function RepoViewer({ repoContents, chatFiles }) {
   const [repoMap, setRepoMap] = useState('');
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     async function generateRepoMap() {
       if (repoContents) {
-        const fileSummaries = await Promise.all(
-          Object.entries(repoContents)
-            .filter(([path]) => !chatFiles.includes(path))
-            .map(async ([path, { content }]) => {
-              const summary = await summarizeFile(content);
-              return `${path}:\n${summary}`;
-            })
-        );
-
-        const fullRepoMap = await createRepoMap(fileSummaries.join('\n\n'));
-        setRepoMap(fullRepoMap);
+        try {
+          const response = await fetch('/api/getrepo', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ repoUrl: repoContents.url }),
+          });
+          if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error);
+          }
+          const repoMap = await response.json();
+          setRepoMap(repoMap);
+          setError(null);
+        } catch (error) {
+          console.error('Error generating repo map:', error);
+          setError(error.message);
+          setRepoMap('');
+        }
       }
     }
 
     generateRepoMap();
-  }, [repoContents, chatFiles]);
+  }, [repoContents]);
 
   return (
     <div className={styles.container}>
       <h2>Repository Structure:</h2>
-      <pre className={styles.fileContent}>{repoMap}</pre>
+      {error ? (
+        <p className={styles.error}>{error}</p>
+      ) : (
+        <pre className={styles.fileContent}>{repoMap}</pre>
+      )}
     </div>
   );
 }
