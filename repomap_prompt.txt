@@ -1,0 +1,110 @@
+You will be given the full Descriptive Abstract Syntax Tree (AST) of a Python repository. Your task is to analyze the AST and generate a structured JSON that represents the codebase. The JSON should capture the following information:
+1. Classes:
+  - List all classes, their file locations, methods, and parent classes (if any).
+  - Structure:
+  ``` JSON
+  {
+    "classes": [
+      {
+        "name": "ClassName",
+        "file": "file_path.py",
+        "methods": ["method1", "method2"],
+        "parent": "ParentClassName"
+      }
+    ]
+  }
+  ```
+2. Functions:
+  - List all top-level functions, their file locations, parameters, and other functions they call.
+  - Structure:
+  ``` JSON
+  {
+    "functions": [
+      {
+        "name": "function_name",
+        "file": "file_path.py",
+        "parameters": ["param1", "param2"],
+        "calls": ["function_name1", "function_name2"]
+      }
+    ]
+  }
+  ```
+3. Class Hierarchy:
+  - Represent the parent-child relationships between classes.
+  - Structure:
+  ``` JSON
+  {
+    "class_hierarchy": [
+      {
+        "parent": "ParentClassName",
+        "children": ["ChildClassName1", "ChildClassName2"]
+      }
+    ]
+  }
+  ```
+
+Instructions:
+1. Input: A full AST file representing all the files in the repository.
+2. Output: A JSON structure as described above.
+3. Considerations:
+  - Class Inheritance: Identify and capture parent-child relationships in classes.
+  - Function Calls: Track function calls and dependencies between functions.
+  - Structure and Redundancy: Avoid redundancy and ensure the JSON is concise and clear.
+
+Example Input:
+``` plaintext
+AST for file: map_metrics/config.py
+class_definition
+  identifier: "BaseConfig"
+  argument_list
+    identifier: "ABC"
+  block
+    ...
+class_definition
+  identifier: "DepthConfig"
+  argument_list
+    identifier: "BaseConfig"
+  block
+    ...
+function_definition
+  identifier: "aggregate_map"
+  parameters
+    identifier: "pcs"
+    identifier: "ts"
+  block
+    ...
+
+```
+Expected JSON Output:
+``` JSON
+{
+  "repository_name": "map_metrics",
+  "classes": [
+    {
+      "name": "BaseConfig",
+      "file": "map_metrics/config.py",
+      "methods": [],
+      "parent": null
+    },
+    ...
+  ],
+  "functions": [
+    {
+      "name": "aggregate_map",
+      "file": "map_metrics/metrics.py",
+      "parameters": ["pcs", "ts"],
+      "calls": []
+    },
+    ...
+  ],
+  "class_hierarchy": {
+    "BaseConfig": ["DepthConfig", "LidarConfig", "CustomConfig"]
+  },
+  "function_dependencies": {
+    "_mean_map_metric": ["aggregate_map", "_plane_variance", "_entropy"],
+    ...
+  }
+}
+```
+
+Generate the JSON structure with similar detail and clarity based on the provided AST below:

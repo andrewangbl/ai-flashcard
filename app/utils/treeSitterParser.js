@@ -1,8 +1,6 @@
 "use client";
 
 import Parser from 'web-tree-sitter';
-import CodeAnalyzer from './CodeAnalyzer';
-import GraphBuilder from './GraphBuilder';
 
 let parserPromise = null;
 
@@ -20,13 +18,11 @@ async function initializeParser() {
     },
   });
   const parser = new Parser();
-  const JavaScript = await Parser.Language.load("tree-sitter-javascript.wasm");
   const Python = await Parser.Language.load("tree-sitter-python.wasm");
 
   return {
     parser,
     languages: {
-      javascript: JavaScript,
       python: Python
     }
   };
@@ -35,24 +31,17 @@ async function initializeParser() {
 export async function parseRepo(parserData, repoMap) {
   const { parser, languages } = parserData;
   const parsedRepo = {};
-  const codeAnalyzer = new CodeAnalyzer();
-  const graphBuilder = new GraphBuilder();
 
   for (const [path, content] of Object.entries(repoMap)) {
+    if (!path.endsWith('.py')) continue;
     try {
-      const ext = path.split('.').pop().toLowerCase();
-      const language = ext === 'py' ? languages.python : languages.javascript;
-      parser.setLanguage(language);
+      parser.setLanguage(languages.python);
 
       const tree = parser.parse(content);
-      const analysisResult = codeAnalyzer.analyzeCode(tree.rootNode, path);
       parsedRepo[path] = {
         structure: extractFileStructure(tree.rootNode, content),
-        ast: tree.rootNode,
-        analysis: analysisResult
+        ast: tree.rootNode
       };
-
-      graphBuilder.constructGraph([analysisResult]);
     } catch (error) {
       console.error(`Error parsing ${path}:`, error);
       parsedRepo[path] = {
@@ -62,7 +51,7 @@ export async function parseRepo(parserData, repoMap) {
     }
   }
 
-  return { parsedRepo, graphData: graphBuilder.graph };
+  return { parsedRepo };
 }
 
 function getLanguageFromExtension(ext) {
@@ -117,114 +106,8 @@ function getLanguageFromExtension(ext) {
   }
 }
 
-function extractFileStructure(node, content, lang) {
-  const structure = [];
-
-  function traverse(node) {
-    let type, name;
-    const item = { type: '', name: '', methods: [] };
-
-    switch (lang) {
-      case 'javascript':
-      case 'typescript':
-        if (node.type === 'class_declaration' || node.type === 'function_declaration' || node.type === 'arrow_function' || node.type === 'function') {
-          type = node.type === 'class_declaration' ? 'class' : 'function';
-          name = node.childForFieldName('name')?.text || 'anonymous';
-          item.type = type;
-          item.name = name;
-
-          for (let child of node.children) {
-            if (child.type === 'method_definition' || child.type === 'function_declaration') {
-              const methodName = child.childForFieldName('name')?.text || 'anonymous';
-              item.methods.push(methodName);
-            }
-          }
-          structure.push(item);
-        } else if (node.type === 'variable_declaration') {
-          const declarator = node.childForFieldName('declarator');
-          if (declarator) {
-            const value = declarator.childForFieldName('value');
-            if (value && (value.type === 'arrow_function' || value.type === 'function')) {
-              type = 'function';
-              name = declarator.childForFieldName('name')?.text || 'anonymous';
-              item.type = type;
-              item.name = name;
-              structure.push(item);
-            }
-          }
-        }
-        break;
-
-      case 'python':
-        if (node.type === 'class_definition' || node.type === 'function_definition') {
-          type = node.type === 'class_definition' ? 'class' : 'function';
-          name = node.childForFieldName('name')?.text || 'anonymous';
-          item.type = type;
-          item.name = name;
-
-          for (let child of node.children) {
-            if (child.type === 'function_definition') {
-              const methodName = child.childForFieldName('name')?.text || 'anonymous';
-              item.methods.push(methodName);
-            }
-          }
-          structure.push(item);
-        }
-        break;
-
-      case 'bash':
-        if (node.type === 'function_definition') {
-          type = 'function';
-          name = node.childForFieldName('name')?.text || 'anonymous';
-          item.type = type;
-          item.name = name;
-          structure.push(item);
-        }
-        break;
-
-      case 'html':
-        if (node.type === 'element') {
-          type = 'element';
-          name = node.childForFieldName('tag_name')?.text || 'anonymous';
-          item.type = type;
-          item.name = name;
-          structure.push(item);
-        }
-        break;
-
-      case 'toml':
-      case 'yaml':
-        if (node.type === 'table' || node.type === 'pair') {
-          type = node.type;
-          name = node.childForFieldName('key')?.text || 'anonymous';
-          item.type = type;
-          item.name = name;
-          structure.push(item);
-        }
-        break;
-    }
-
-    for (let child of node.children) {
-      traverse(child);
-    }
-  }
-
-  traverse(node);
-  return formatFileStructure(structure);
-}
-
-function formatFileStructure(structure) {
-  let output = '⋮...\n';
-
-  structure.forEach(item => {
-    output += `${item.type} ${item.name}:\n`;
-    item.methods.forEach(method => {
-      output += `│    ${method}\n`;
-    });
-    output += '⋮...\n';
-  });
-
-  return output;
+function extractFileStructure(node, content) {
+  return 'File structure available in AST';
 }
 
 export function renderTree(content, linesOfInterest) {
@@ -240,32 +123,27 @@ export function renderTree(content, linesOfInterest) {
   return output;
 }
 
-
-// AST tree limit to 30 levels
-export function toTree(parsedRepo, chatFiles, maxDepth = 30) {
+export function toTree(parsedRepo, maxDepth = 30) {
   let output = '';
 
   for (const [path, data] of Object.entries(parsedRepo)) {
-    if (chatFiles.includes(path)) continue;
-
     output += `\n${path}:\n`;
-    output += data.structure;
-    output += '\nAST:\n';
+    output += 'AST:\n';
     output += visualizeAST(data.ast, '', maxDepth);
   }
 
   return output.split('\n').map(line => line.slice(0, 100)).join('\n') + '\n';
 }
 
-function visualizeAST(node, indent = '', maxDepth = 20) {
+function visualizeAST(node, indent = '', maxDepth = 25) {
   if (maxDepth === 0) return `${indent}...\n`;
 
-  // Skip comments and other unnecessary nodes
   if (shouldSkipNode(node)) return '';
 
   let output = `${indent}${node.type}`;
   if (node.type === 'string' || node.type === 'identifier') {
-    output += `: "${node.text}"`;
+    const text = node.text.replace(/\n/g, '\\n').slice(0, 20);
+    output += `: "${text}${text.length > 20 ? '...' : ''}"`;
   }
   output += '\n';
 
@@ -278,6 +156,13 @@ function visualizeAST(node, indent = '', maxDepth = 20) {
 
 function shouldSkipNode(node) {
   if (!node) return true;
-  const skipTypes = ['comment', 'line_comment', 'block_comment'];
-  return skipTypes.includes(node.type);
+  const skipTypes = ['comment', 'line_comment', 'block_comment', 'string'];
+  if (skipTypes.includes(node.type)) {
+    // For string nodes, only skip if they are multi-line (likely docstrings)
+    if (node.type === 'string') {
+      return node.text.includes('\n');
+    }
+    return true;
+  }
+  return false;
 }
