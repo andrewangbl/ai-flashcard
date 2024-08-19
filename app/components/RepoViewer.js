@@ -50,7 +50,7 @@ export default function RepoViewer({ repoMap, chatFiles }) {
             {graphData && graphData.nodes.map(node =>
               node.content && node.content.type && (
                 <li key={node.id}>
-                  {node.content.type}: {node.content.name} (Lines {node.content.startLine}-{node.content.endLine})
+                  {node.content.type}: {node.content.name}
                 </li>
               )
             )}

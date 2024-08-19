@@ -10,17 +10,15 @@ class CodeAnalyzer {
 
     if (stdLibModules.includes(importName)) {
       return 'standard';
-    } else if (importText.startsWith('from .') || importText.startsWith('from ..')) {
-      return 'internal';
     } else {
-      return 'external';
+      return 'other';
     }
   }
 
   analyzeCode(ast, filePath) {
     const structure = {
       symbols: [],
-      imports: { standard: [], external: [], internal: [] }
+      imports: { standard: [], other: [] }
     };
 
     const traverse = (node, parent = null) => {
@@ -37,9 +35,7 @@ class CodeAnalyzer {
           if (name) {
             structure.symbols.push({
               type: node.type === 'function_definition' ? 'function' : 'class',
-              name: name,
-              startLine: node.startPosition.row + 1,
-              endLine: node.endPosition.row + 1
+              name: name
             });
           }
           break;

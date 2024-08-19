@@ -26,8 +26,8 @@ async function fetchRepoContents(owner, repo, path = '') {
           const fileContent = await octokit.repos.getContent({ owner, repo, path: item.path });
           contents[item.path] = Buffer.from(fileContent.data.content, 'base64').toString('utf-8');
         }
-      } else if (item.type === 'dir' && path.split('/').length < 5) {
-        // Limit directory depth to 4 levels
+      } else if (item.type === 'dir' && path.split('/').length < 6) {
+        // Limit directory depth to 5 levels
         const subDirContents = await fetchRepoContents(owner, repo, item.path);
         contents = { ...contents, ...subDirContents };
       }

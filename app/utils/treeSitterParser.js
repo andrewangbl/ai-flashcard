@@ -78,9 +78,8 @@ function getLanguageFromExtension(ext) {
     case 'sh':
     case 'bash': return 'bash';
     case 'html': return 'html';
-    case 'toml': return 'toml';
-    case 'yml':
-    case 'yaml': return 'yaml';
+    case 'toml':
+    case 'yml': return 'yaml';
     // Ignore configuration and system files
     case 'md':
     case 'txt':
@@ -120,7 +119,6 @@ function getLanguageFromExtension(ext) {
 
 function extractFileStructure(node, content, lang) {
   const structure = [];
-  const lines = content.split('\n');
 
   function traverse(node) {
     let type, name;
@@ -212,10 +210,10 @@ function extractFileStructure(node, content, lang) {
   }
 
   traverse(node);
-  return formatFileStructure(structure, lines);
+  return formatFileStructure(structure);
 }
 
-function formatFileStructure(structure, lines) {
+function formatFileStructure(structure) {
   let output = '⋮...\n';
 
   structure.forEach(item => {
@@ -242,7 +240,9 @@ export function renderTree(content, linesOfInterest) {
   return output;
 }
 
-export function toTree(parsedRepo, chatFiles, maxDepth = 15) {
+
+// AST tree limit to 30 levels
+export function toTree(parsedRepo, chatFiles, maxDepth = 30) {
   let output = '';
 
   for (const [path, data] of Object.entries(parsedRepo)) {
@@ -257,7 +257,7 @@ export function toTree(parsedRepo, chatFiles, maxDepth = 15) {
   return output.split('\n').map(line => line.slice(0, 100)).join('\n') + '\n';
 }
 
-function visualizeAST(node, indent = '', maxDepth = 15) {
+function visualizeAST(node, indent = '', maxDepth = 20) {
   if (maxDepth === 0) return `${indent}...\n`;
 
   // Skip comments and other unnecessary nodes

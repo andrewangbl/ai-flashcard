@@ -25,7 +25,7 @@ class GraphBuilder {
       this.addNode(filePath, structure);
 
       // Handle all non-standard library imports
-      structure.imports.external.concat(structure.imports.internal).forEach(importLine => {
+      structure.imports.other.forEach(importLine => {
         const importedModule = importLine.split(' ')[1].split('.')[0];
         if (!stdLibModules.includes(importedModule)) {
           this.addEdge(importLine, filePath);
