@@ -8,6 +8,7 @@ export default function RepoViewer({ repoMap }) {
   const [parser, setParser] = useState(null);
   const [parserError, setParserError] = useState(null);
   const [treeView, setTreeView] = useState('');
+  const [astOutput, setAstOutput] = useState('');
 
   useEffect(() => {
     useTreeSitter()
@@ -30,7 +31,9 @@ export default function RepoViewer({ repoMap }) {
 
       parseRepo(parser, Object.fromEntries(pythonFiles))
         .then(({ parsedRepo }) => {
-          setTreeView(toTree(parsedRepo));
+          const treeString = toTree(parsedRepo);
+          setTreeView(treeString);
+          setAstOutput(treeString); // Store the AST output in a variable
         })
         .catch(error => {
           console.error("Error parsing repo:", error);

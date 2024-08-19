@@ -38,9 +38,16 @@ export async function parseRepo(parserData, repoMap) {
       parser.setLanguage(languages.python);
 
       const tree = parser.parse(content);
+      const rootNode = tree.rootNode;
+
+      // Check if the file contains functions or classes
+      if (!containsFunctionsOrClasses(rootNode)) {
+        continue; // Skip this file
+      }
+
       parsedRepo[path] = {
-        structure: extractFileStructure(tree.rootNode, content),
-        ast: tree.rootNode
+        structure: extractFileStructure(rootNode, content),
+        ast: rootNode
       };
     } catch (error) {
       console.error(`Error parsing ${path}:`, error);
@@ -123,7 +130,7 @@ export function renderTree(content, linesOfInterest) {
   return output;
 }
 
-export function toTree(parsedRepo, maxDepth = 30) {
+export function toTree(parsedRepo, maxDepth = 25) {
   let output = '';
 
   for (const [path, data] of Object.entries(parsedRepo)) {
@@ -135,13 +142,13 @@ export function toTree(parsedRepo, maxDepth = 30) {
   return output.split('\n').map(line => line.slice(0, 100)).join('\n') + '\n';
 }
 
-function visualizeAST(node, indent = '', maxDepth = 25) {
+function visualizeAST(node, indent = '', maxDepth = 10) {
   if (maxDepth === 0) return `${indent}...\n`;
 
   if (shouldSkipNode(node)) return '';
 
   let output = `${indent}${node.type}`;
-  if (node.type === 'string' || node.type === 'identifier') {
+  if (node.type === 'identifier') {
     const text = node.text.replace(/\n/g, '\\n').slice(0, 20);
     output += `: "${text}${text.length > 20 ? '...' : ''}"`;
   }
@@ -156,13 +163,26 @@ function visualizeAST(node, indent = '', maxDepth = 25) {
 
 function shouldSkipNode(node) {
   if (!node) return true;
-  const skipTypes = ['comment', 'line_comment', 'block_comment', 'string'];
+  const skipTypes = ['comment', 'line_comment', 'block_comment', 'string', 'list'];
   if (skipTypes.includes(node.type)) {
     // For string nodes, only skip if they are multi-line (likely docstrings)
     if (node.type === 'string') {
       return node.text.includes('\n');
     }
     return true;
+  }
+  return false;
+}
+
+function containsFunctionsOrClasses(node) {
+  if (!node) return false;
+  if (node.type === 'function_definition' || node.type === 'class_definition') {
+    return true;
+  }
+  for (let child of node.namedChildren) {
+    if (containsFunctionsOrClasses(child)) {
+      return true;
+    }
   }
   return false;
 }
